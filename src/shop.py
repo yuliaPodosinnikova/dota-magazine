@@ -1,3 +1,5 @@
+import random
+import time
 from src.database import load_shop_items, load_hero_progress, save_hero_progress
 
 class DotaShop:
@@ -6,42 +8,237 @@ class DotaShop:
         progress = load_hero_progress()
         self.gold = progress["gold"]
         self.inventory = progress["inventory"]
+        self.hp = progress.get("hp", 500)
+        self.max_slots = 6
+
+    def get_hero_stats(self):
+        """Динамически рассчитывает характеристики героя на основе вещей."""
+        stats = {
+            "max_hp": 500,
+            "damage": 50,
+            "lifesteal": 0.0,
+            "evasion": 0.0
+        }
+        for item in self.inventory:
+            if item == "Iron Branch":
+                stats["max_hp"] += 10
+                stats["damage"] += 1
+            elif item == "Blight Stone":
+                stats["damage"] += 5
+            elif item == "Boots of Speed":
+                stats["evasion"] += 0.15
+            elif item == "Morbid Mask":
+                stats["lifesteal"] += 0.15
+            elif item == "Quarterstaff":
+                stats["damage"] += 10
+            elif item == "Sacred Relic":
+                stats["damage"] += 55
+            elif item == "Power Treads":
+                stats["max_hp"] += 100
+                stats["damage"] += 15
+            elif item == "Mask of Madness":
+                stats["lifesteal"] += 0.20
+                stats["damage"] += 30
+            elif item == "Divine Rapier":
+                stats["damage"] += 350
+        return stats
 
     def show_items(self):
-        """Выводит список товаров в лавке."""
-        print("\n⚔️ --- АССОРТИМЕНТ ПОТАЙНОЙ ЛАВКИ ---")
+        print("\n--- АССОРТИМЕНТ ПОТАЙНОЙ ЛАВКИ ---")
         for idx, item in enumerate(self.shop_items, 1):
-            print(f"{idx}. {item['name']} —  {item['cost']} gold | Эффект: {item['bonus']}")
+            if item["cost"] == 0:
+                continue
+            type_label = "[СБОРНЫЙ]" if item.get("components") else "[БАЗОВЫЙ]"
+            print(f"{idx}. {type_label} {item['name']} — {item['cost']} gold | {item['bonus']}")
+
+    def check_crafting(self):
+        for item in self.shop_items:
+            components = item.get("components")
+            if components:
+                temp_inv = self.inventory.copy()
+                has_all = True
+                for comp in components:
+                    if comp in temp_inv:
+                        temp_inv.remove(comp)
+                    else:
+                        has_all = False
+                        break
+                
+                if has_all:
+                    self.inventory = temp_inv
+                    self.inventory.append(item["name"])
+                    print(f"Успех! Ваши предметы объединились в: {item['name']}!")
+                    save_hero_progress(self.gold, self.inventory, self.hp)
+                    self.check_crafting()
+                    break
 
     def buy_item(self, item_index):
-        """Логика покупки предмета."""
         if item_index < 0 or item_index >= len(self.shop_items):
-            print("Ошибка: Предмета с таким номером не существует в лавке!")
+            print("Ошибка: Предмета с таким номером нет в лавке!")
             return
 
         selected_item = self.shop_items[item_index]
+        if selected_item["cost"] == 0:
+            print("Ошибка: Этот предмет нельзя купить!")
+            return
         
+        if not selected_item.get("components") and len(self.inventory) >= self.max_slots:
+            print("Ошибка: Рюкзак забит! У вас уже 6 предметов. Продайте что-нибудь.")
+            return
+
         if self.gold >= selected_item["cost"]:
             self.gold -= selected_item["cost"]
-            self.inventory.append(selected_item["name"])
-            save_hero_progress(self.gold, self.inventory)
-            print(f"Вы купили {selected_item['name']}! Нажмите TAB в игре (шутка).")
+            if selected_item["name"] == "Tango":
+                stats = self.get_hero_stats()
+                self.hp = min(stats["max_hp"], self.hp + 100)
+                print("Вы купили и сразу использовали Tango. Восстановлено 100 HP.")
+            else:
+                self.inventory.append(selected_item["name"])
+                print(f"Вы купили {selected_item['name']}!")
+            
+            self.check_crafting()
+            save_hero_progress(self.gold, self.inventory, self.hp)
         else:
-            print(f"Недостаточно золота! Вам не хватает {selected_item['cost'] - self.gold} золота для покупки {selected_item['name']}.")
+            print(f"Ошибка: Недостаточно золота! Не хватает {selected_item['cost'] - self.gold} золота.")
+
+    def sell_item(self, inv_index):
+        if inv_index < 0 or inv_index >= len(self.inventory):
+            print("Ошибка: Нет предмета с таким номером в инвентаре!")
+            return
+        
+        item_name = self.inventory[inv_index]
+        item_cost = next((item["cost"] for item in self.shop_items if item["name"] == item_name), 0)
+        sell_price = item_cost // 2
+
+        self.gold += sell_price
+        self.inventory.pop(inv_index)
+        save_hero_progress(self.gold, self.inventory, self.hp)
+        print(f"Вы продали {item_name} торговцу за {sell_price} золота.")
+
+    def handle_death(self):
+        """Логика смерти героя."""
+        if "Aegis of the Immortal" in self.inventory:
+            self.inventory.remove("Aegis of the Immortal")
+            stats = self.get_hero_stats()
+            self.hp = stats["max_hp"]
+            print("Вы погибли! Но Aegis of the Immortal возвращает вас к жизни с полным HP!")
+            save_hero_progress(self.gold, self.inventory, self.hp)
+            return False
+        
+        print("Вы погибли! Возрождение в фонтане.")
+        if "Divine Rapier" in self.inventory:
+            self.inventory.remove("Divine Rapier")
+            print("Внимание: Вы потеряли Divine Rapier при смерти!")
+        
+        self.gold = max(0, self.gold - 200)
+        stats = self.get_hero_stats()
+        self.hp = stats["max_hp"]
+        save_hero_progress(self.gold, self.inventory, self.hp)
+        return True
 
     def farm_gold(self):
-        """Симуляция убийства крипов (фарм)."""
-        earned = 150  # Золото за пачку крипов
-        self.gold += earned
-        save_hero_progress(self.gold, self.inventory)
-        print(f"Вы отфармили пачку крипов на линии! Получено +{earned} ")
+        stats = self.get_hero_stats()
+        if self.hp <= 50:
+            print("У вас слишком мало HP для выхода на линию! Купите Tango или посетите фонтан.")
+            return
 
-    def show_inventory(self):
-        """Показывает золото и вещи героя."""
-        print("\n --- ИНВЕНТАРЬ ГЕРОЯ ---")
-        print(f"Текущее золото: {self.gold}")
-        if not self.inventory:
-            print("Инвентарь пуст. Вы бегаете «голым»!")
+        print(f"\n--- ВЫШЛИ НА ЛИНИЮ | Ваш HP: {self.hp}/{stats['max_hp']} | Урон: {stats['damage']} ---")
+        creeps = 4
+        total_earned = 0
+
+        for i in range(1, creeps + 1):
+            creep_hp = random.randint(30, 90)
+            enemy_deny_chance = 0.35 # Шанс врага заденаить крипа
+            
+            print(f"\nКрип #{i} выползает на линию. Его HP: {creep_hp}")
+            
+            # Вражеский герой атакует вас на линии
+            if random.random() < 0.40:
+                enemy_dmg = random.randint(25, 45)
+                if random.random() < stats["evasion"]:
+                    print("Вражеский хардлейнер пытался вас ударить, но вы уклонились!")
+                else:
+                    self.hp -= enemy_dmg
+                    print(f"Вражеский хардлейнер ударил вас! Вы потеряли {enemy_dmg} HP. Осталось: {self.hp}")
+                    if self.hp <= 0:
+                        if self.handle_death():
+                            return
+
+            print("1. Ударить крипа")
+            print("2. Подождать просадки HP")
+            choice = input("Действие: ").strip()
+
+            if choice == "2":
+                creep_hp -= random.randint(20, 40)
+                if creep_hp <= 0:
+                    print("Союзные крипы добили цель. Вы упустили золото.")
+                    continue
+                if random.random() < enemy_deny_chance:
+                    print("Враг воспользовался вашим промедлением и заденаил крипа!")
+                    continue
+                print(f"HP крипа опустилось до {creep_hp}. Вы бьете!")
+
+            # Нанесение урона героем
+            if stats["damage"] >= creep_hp:
+                gold_reward = 45
+                total_earned += gold_reward
+                print(f"Ластхит! Вы получили +{gold_reward} золота.")
+                # Работа вампиризма
+                if stats["lifesteal"] > 0:
+                    healed = int(stats["damage"] * stats["lifesteal"])
+                    self.hp = min(stats["max_hp"], self.hp + healed)
+                    print(f"Вампиризм восстановил вам {healed} HP.")
+            else:
+                print(f"Не добил! У крипа осталось {creep_hp - stats['damage']} HP, его забрал ваш оппонент.")
+            
+            time.sleep(0.4)
+
+        self.gold += total_earned
+        save_hero_progress(self.gold, self.inventory, self.hp)
+        print(f"\nПачка зачищена. Получено золота: {total_earned}")
+
+    def fight_roshan(self):
+        """Финальная битва с боссом."""
+        stats = self.get_hero_stats()
+        print("\n--- ЛОГОВО РОШАНА ---")
+        print(f"Ваш HP: {self.hp}/{stats['max_hp']} | Урон: {stats['damage']}")
+        print("Рошан невероятно силен. Вы уверены, что хотите напасть? (да/нет)")
+        
+        if input().strip().lower() != "да":
+            print("Вы испугались грозного рыка и убежали.")
+            return
+
+        roshan_hp = 1200
+        roshan_dmg = 75
+
+        print("Битва началась!")
+        while roshan_hp > 0 and self.hp > 0:
+            # Ход игрока
+            roshan_hp -= stats["damage"]
+            print(f"Вы нанесли Рошану {stats['damage']} урона. У него осталось {max(0, roshan_hp)} HP.")
+            if stats["lifesteal"] > 0:
+                healed = int(stats["damage"] * stats["lifesteal"])
+                self.hp = min(stats["max_hp"], self.hp + healed)
+                print(f"Вампиризм восстановил вам {healed} HP.")
+            
+            if roshan_hp <= 0:
+                break
+                
+            # Ход Рошана
+            time.sleep(0.5)
+            if random.random() < stats["evasion"]:
+                print("Рошан замахнулся, но вы уклонились от его удара!")
+            else:
+                self.hp -= roshan_dmg
+                print(f"Рошан бьет в ответ: -{roshan_dmg} HP. Ваше здоровье: {max(0, self.hp)}")
+
+        if self.hp <= 0:
+            self.handle_death()
         else:
-            for item in self.inventory:
-                print(f" - [{item}]")
+            print("\nПобеда! Вы повергли Рошана!")
+            if len(self.inventory) < self.max_slots:
+                self.inventory.append("Aegis of the Immortal")
+                print("Вы подобрали Aegis of the Immortal! Теперь у вас есть одна бесплатная жизнь.")
+            else:
+                print("Ваш инвентарь был полон, Aegis упал на землю и растворился (освобождайте слоты заранее!).")
+            

@@ -1,7 +1,12 @@
 {
-    "gold": 19177,
+    "gold": 8417,
     "inventory": [
         "Divine Rapier",
+        "Divine Rapier",
+        "Iron Branch",
+        "Divine Rapier",
+        "Iron Branch",
         "Divine Rapier"
-    ]
+    ],
+    "hp": 394
 }

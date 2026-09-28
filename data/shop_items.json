@@ -1,0 +1,37 @@
+[
+    {
+        "name": "Iron Branch",
+        "cost": 50,
+        "bonus": "+1 ко всем атрибутам"
+    },
+    {
+        "name": "Blight Stone",
+        "cost": 300,
+        "bonus": "-2 брони врагу при атаке"
+    },
+    {
+        "name": "Boots of Speed",
+        "cost": 500,
+        "bonus": "+45 к скорости передвижения"
+    },
+    {
+        "name": "Morbid Mask",
+        "cost": 900,
+        "bonus": "+15% к вампиризму"
+    },
+    {
+        "name": "Shadow Blade",
+        "cost": 3000,
+        "bonus": "+20 к урону, невидимость"
+    },
+    {
+        "name": "Sacred Relic",
+        "cost": 3400,
+        "bonus": "+55 к урону"
+    },
+    {
+        "name": "Divine Rapier",
+        "cost": 5600,
+        "bonus": "+350 к урону (выпадает при смерти)"
+    }
+]
